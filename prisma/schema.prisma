@@ -1,0 +1,54 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  passwordHash String
+  role         String   // 'ADMIN' or 'STAFF'
+  name         String
+  claims       Claim[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Account {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  name      String
+  isActive  Boolean  @default(true)
+  claims    Claim[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Claim {
+  id              String   @id @default(uuid())
+  supplierName    String
+  referenceNumber String   // reference / invoice / receipt number
+  date            DateTime
+  accountId       String
+  account         Account  @relation(fields: [accountId], references: [id])
+  itemDescription String
+  amount          Float
+  receiptUrl      String?  // path to the uploaded invoice/receipt image or PDF
+  status          String   @default("PENDING") // 'PENDING', 'APPROVED', 'REJECTED'
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Setting {
+  key       String   @id
+  value     String   // stringified JSON or plain settings
+  updatedAt DateTime @updatedAt
+}
