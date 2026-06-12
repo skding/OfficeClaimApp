@@ -1126,7 +1126,7 @@ export default function AdminDashboard() {
                 <ArrowDownToLine size={24} style={{ color: 'hsl(var(--accent))' }} />
                 <div>
                   <h3 style={{ fontSize: '1.25rem' }}>Export Approved claims to Bukku</h3>
-                  <p style={{ fontSize: '0.8rem', color: 'hsl(var(--text-secondary))' }}>Configure parameters below to generate a Bukku-compatible CSV import template.</p>
+                  <p style={{ fontSize: '0.8rem', color: 'hsl(var(--text-secondary))' }}>Configure parameters below to generate a Bukku-compatible XLSX import file.</p>
                 </div>
               </div>
 
@@ -1228,7 +1228,7 @@ export default function AdminDashboard() {
                   style={{ width: '100%', padding: '0.85rem' }}
                 >
                   <ArrowDownToLine size={18} />
-                  <span>Download Bukku Expense claim CSV</span>
+                  <span>Download Bukku Expense claim XLSX</span>
                 </button>
               </div>
             </div>
