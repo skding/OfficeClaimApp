@@ -41,10 +41,14 @@ export async function POST(request: Request) {
     });
 
     const cookieStore = await cookies();
+    // Use 'lax' instead of 'strict' so the cookie is sent after redirects.
+    // Use secure:true only when HTTPS is explicitly enabled (plain HTTP deployments
+    // silently drop cookies with secure:true even in production).
+    const isHttps = process.env.HTTPS_ENABLED === 'true';
     cookieStore.set('auth_token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      secure: isHttps,
+      sameSite: 'lax',
       maxAge: 60 * 60 * 24 * 7, // 1 week
       path: '/',
     });
