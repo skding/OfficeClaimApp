@@ -149,24 +149,6 @@ export default function LoginPage() {
             )}
           </button>
         </form>
-
-        <div style={{ marginTop: '2rem', textAlign: 'center', borderTop: '1px solid hsl(var(--border-color))', paddingTop: '1.5rem' }}>
-          <p style={{ color: 'hsl(var(--text-secondary))', fontSize: '0.85rem', fontWeight: '600' }}>
-            Demo Access Accounts
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.75rem' }}>
-            <div className="glass" style={{ padding: '0.5rem', borderRadius: '8px', fontSize: '0.75rem' }}>
-              <div style={{ color: 'hsl(var(--accent))', fontWeight: '600' }}>Admin</div>
-              <div style={{ color: 'hsl(var(--text-muted))' }}>admin</div>
-              <div style={{ color: 'hsl(var(--text-muted))' }}>adminpassword</div>
-            </div>
-            <div className="glass" style={{ padding: '0.5rem', borderRadius: '8px', fontSize: '0.75rem' }}>
-              <div style={{ color: 'hsl(var(--accent))', fontWeight: '600' }}>Staff</div>
-              <div style={{ color: 'hsl(var(--text-muted))' }}>staff</div>
-              <div style={{ color: 'hsl(var(--text-muted))' }}>staffpassword</div>
-            </div>
-          </div>
-        </div>
       </div>
 
       <style jsx global>{`
