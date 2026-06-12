@@ -26,6 +26,7 @@ interface Claim {
   status: string;
   accountId: string;
   account: Account;
+  isArchived?: boolean;
 }
 
 export default function StaffDashboard() {
@@ -134,8 +135,10 @@ export default function StaffDashboard() {
       setSelectedFile(file);
       if (file.type.startsWith('image/')) {
         setFilePreview(URL.createObjectURL(file));
+      } else if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+        setFilePreview(URL.createObjectURL(file) + '#' + file.name);
       } else {
-        setFilePreview(null); // PDF or other
+        setFilePreview(null);
       }
     }
   };
@@ -891,11 +894,20 @@ export default function StaffDashboard() {
                     alignItems: 'center',
                     justifyContent: 'center'
                   }}>
-                    {filePreview.endsWith('.pdf') ? (
+                    {filePreview.toLowerCase().includes('.pdf') ? (
                       <div style={{ padding: '2rem', textAlign: 'center' }}>
                         <FileText size={48} style={{ color: 'hsl(var(--primary))', marginBottom: '0.5rem' }} />
-                        <div style={{ fontSize: '0.85rem' }}>PDF Receipt Attached</div>
-                        {selectedFile && <div style={{ fontSize: '0.75rem', color: 'hsl(var(--text-muted))' }}>{selectedFile.name}</div>}
+                        <div style={{ fontSize: '0.85rem', marginBottom: '1rem' }}>PDF Receipt Attached</div>
+                        {selectedFile && <div style={{ fontSize: '0.75rem', color: 'hsl(var(--text-muted))', marginBottom: '1rem' }}>{selectedFile.name}</div>}
+                        <a 
+                          href={filePreview} 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="btn btn-secondary"
+                          style={{ padding: '0.5rem 1rem', fontSize: '0.8rem', display: 'inline-block' }}
+                        >
+                          Open PDF in New Tab
+                        </a>
                       </div>
                     ) : (
                       /* eslint-disable-next-line @next/next/no-img-element */

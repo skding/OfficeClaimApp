@@ -42,6 +42,7 @@ interface Claim {
     code: string;
     name: string;
   };
+  isArchived: boolean;
 }
 
 type TabType = 'CLAIMS' | 'USERS' | 'ACCOUNTS' | 'EXPORT';
@@ -70,6 +71,9 @@ export default function AdminDashboard() {
 
   // 1. Claims Review states
   const [filterClaimsStatus, setFilterClaimsStatus] = useState<string>('ALL');
+  const [filterClaimsUser, setFilterClaimsUser] = useState<string>('ALL');
+  const [filterStartDate, setFilterStartDate] = useState<string>('');
+  const [filterEndDate, setFilterEndDate] = useState<string>('');
   const [selectedClaim, setSelectedClaim] = useState<Claim | null>(null);
   const [processingClaim, setProcessingClaim] = useState(false);
 
@@ -190,6 +194,35 @@ export default function AdminDashboard() {
       }
 
       setSuccessMsg(`Claim status updated to ${newStatus}!`);
+      setSelectedClaim(null); // close preview
+      fetchClaims();
+      setTimeout(() => setSuccessMsg(''), 4000);
+    } catch (e) {
+      const err = e as Error;
+      setErrorMsg(err.message || 'Operation failed.');
+    } finally {
+      setProcessingClaim(false);
+    }
+  };
+
+  const handleArchiveClaim = async (id: string) => {
+    setProcessingClaim(true);
+    setErrorMsg('');
+    try {
+      const formData = new FormData();
+      formData.append('isArchived', 'true');
+
+      const res = await fetch(`/api/claims/${id}`, {
+        method: 'PUT',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to archive claim');
+      }
+
+      setSuccessMsg('Claim archived successfully!');
       setSelectedClaim(null); // close preview
       fetchClaims();
       setTimeout(() => setSuccessMsg(''), 4000);
@@ -365,8 +398,35 @@ export default function AdminDashboard() {
 
   // Claims Filter
   const filteredClaims = claims.filter(c => {
-    if (filterClaimsStatus === 'ALL') return true;
-    return c.status === filterClaimsStatus;
+    // 1. Archive Filter
+    if (filterClaimsStatus === 'ARCHIVED') {
+      if (!c.isArchived) return false;
+    } else {
+      if (c.isArchived) return false;
+    }
+
+    // 2. Status Filter
+    if (filterClaimsStatus !== 'ALL' && filterClaimsStatus !== 'ARCHIVED') {
+      if (c.status !== filterClaimsStatus) return false;
+    }
+
+    // 3. User Filter
+    if (filterClaimsUser !== 'ALL' && c.userId !== filterClaimsUser) return false;
+
+    // 4. Date Filter
+    const claimDate = new Date(c.date);
+    if (filterStartDate) {
+      const start = new Date(filterStartDate);
+      start.setHours(0, 0, 0, 0);
+      if (claimDate < start) return false;
+    }
+    if (filterEndDate) {
+      const end = new Date(filterEndDate);
+      end.setHours(23, 59, 59, 999);
+      if (claimDate > end) return false;
+    }
+
+    return true;
   });
 
   const getStatusClass = (status: string) => {
@@ -529,30 +589,123 @@ export default function AdminDashboard() {
 
             {/* Claims Table Review Card */}
             <div className="card glass" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-                <div>
-                  <h3 style={{ fontSize: '1.25rem' }}>Employee Claims Verification</h3>
-                  <p style={{ fontSize: '0.8rem', color: 'hsl(var(--text-secondary))' }}>Click on a claim row to review and approve/reject the submission.</p>
-                </div>
-                
-                {/* Filter buttons */}
-                <div className="glass" style={{ display: 'flex', padding: '0.25rem', borderRadius: '8px', gap: '0.25rem' }}>
-                  {['ALL', 'PENDING', 'APPROVED', 'REJECTED'].map((st) => (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', borderBottom: '1px solid hsl(var(--border-color))', paddingBottom: '1.25rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                  <div>
+                    <h3 style={{ fontSize: '1.25rem' }}>Employee Claims Verification</h3>
+                    <p style={{ fontSize: '0.8rem', color: 'hsl(var(--text-secondary))' }}>Click on a claim row to review and approve/reject the submission.</p>
+                  </div>
+
+                  {filterClaimsUser !== 'ALL' && (
                     <button
-                      key={st}
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => {
+                        let url = `/api/admin/users/${filterClaimsUser}/report?`;
+                        if (filterStartDate) url += `startDate=${filterStartDate}&`;
+                        if (filterEndDate) url += `endDate=${filterEndDate}&`;
+                        window.open(url, '_blank');
+                      }}
+                      style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', fontSize: '0.8rem', borderRadius: '8px' }}
+                    >
+                      <FileText size={15} />
+                      <span>Print Summary & Receipts</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Filters Row */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center' }}>
+                    {/* Status Tabs */}
+                    <div className="glass" style={{ display: 'flex', padding: '0.25rem', borderRadius: '8px', gap: '0.25rem' }}>
+                      {['ALL', 'PENDING', 'APPROVED', 'REJECTED', 'ARCHIVED'].map((st) => (
+                        <button
+                          key={st}
+                          type="button"
+                          className="btn"
+                          style={{
+                            padding: '0.4rem 0.8rem',
+                            fontSize: '0.8rem',
+                            borderRadius: '6px',
+                            background: filterClaimsStatus === st ? 'hsl(var(--bg-main))' : 'transparent',
+                            color: filterClaimsStatus === st ? 'hsl(var(--text-primary))' : 'hsl(var(--text-muted))'
+                          }}
+                          onClick={() => setFilterClaimsStatus(st)}
+                        >
+                          {st}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Employee Selector Dropdown */}
+                    <select
+                      value={filterClaimsUser}
+                      onChange={(e) => setFilterClaimsUser(e.target.value)}
                       className="btn"
                       style={{
                         padding: '0.4rem 0.8rem',
                         fontSize: '0.8rem',
-                        borderRadius: '6px',
-                        background: filterClaimsStatus === st ? 'hsl(var(--bg-main))' : 'transparent',
-                        color: filterClaimsStatus === st ? 'hsl(var(--text-primary))' : 'hsl(var(--text-muted))'
+                        borderRadius: '8px',
+                        border: '1px solid hsl(var(--border-color))',
+                        backgroundColor: 'hsl(var(--bg-card))',
+                        color: 'hsl(var(--text-primary))',
+                        cursor: 'pointer',
+                        minWidth: '150px'
                       }}
-                      onClick={() => setFilterClaimsStatus(st)}
                     >
-                      {st}
-                    </button>
-                  ))}
+                      <option value="ALL">All Employees</option>
+                      {users.map(u => (
+                        <option key={u.id} value={u.id}>
+                          {u.name} (@{u.username})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Date Picker Range */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.8rem', color: 'hsl(var(--text-muted))' }}>From:</span>
+                    <input
+                      type="date"
+                      value={filterStartDate}
+                      onChange={(e) => setFilterStartDate(e.target.value)}
+                      className="btn"
+                      style={{
+                        padding: '0.4rem',
+                        fontSize: '0.8rem',
+                        border: '1px solid hsl(var(--border-color))',
+                        borderRadius: '8px',
+                        background: 'hsl(var(--bg-card))',
+                        color: 'hsl(var(--text-primary))'
+                      }}
+                    />
+                    <span style={{ fontSize: '0.8rem', color: 'hsl(var(--text-muted))' }}>To:</span>
+                    <input
+                      type="date"
+                      value={filterEndDate}
+                      onChange={(e) => setFilterEndDate(e.target.value)}
+                      className="btn"
+                      style={{
+                        padding: '0.4rem',
+                        fontSize: '0.8rem',
+                        border: '1px solid hsl(var(--border-color))',
+                        borderRadius: '8px',
+                        background: 'hsl(var(--bg-card))',
+                        color: 'hsl(var(--text-primary))'
+                      }}
+                    />
+                    {(filterStartDate || filterEndDate) && (
+                      <button
+                        type="button"
+                        onClick={() => { setFilterStartDate(''); setFilterEndDate(''); }}
+                        className="btn btn-secondary"
+                        style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', borderRadius: '8px' }}
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -620,7 +773,12 @@ export default function AdminDashboard() {
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid hsl(var(--border-color))', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
                         <h3 style={{ fontSize: '1.5rem' }}>Review Claim</h3>
-                        <span className={getStatusClass(selectedClaim.status)}>{selectedClaim.status}</span>
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                          <span className={getStatusClass(selectedClaim.status)}>{selectedClaim.status}</span>
+                          {selectedClaim.isArchived && (
+                            <span className="badge badge-rejected" style={{ backgroundColor: 'hsl(var(--text-muted))' }}>ARCHIVED</span>
+                          )}
+                        </div>
                       </div>
 
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -651,31 +809,56 @@ export default function AdminDashboard() {
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '1rem', borderTop: '1px solid hsl(var(--border-color))', paddingTop: '1.5rem', marginTop: '1.5rem' }}>
-                      <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setSelectedClaim(null)}>
-                        Close Review
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', borderTop: '1px solid hsl(var(--border-color))', paddingTop: '1.5rem', marginTop: '1.5rem' }}>
+                      <button 
+                        type="button"
+                        className="btn btn-primary" 
+                        onClick={() => window.open(`/api/admin/claims/${selectedClaim.id}/report`, '_blank')}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', width: '100%' }}
+                      >
+                        <Download size={18} /> Download PDF Report
                       </button>
 
-                      {selectedClaim.status === 'PENDING' && (
-                        <>
-                          <button 
-                            className="btn btn-danger" 
-                            style={{ flex: 1.5 }}
-                            onClick={() => handleProcessClaim(selectedClaim.id, 'REJECTED')}
+                      <div style={{ display: 'flex', gap: '1rem', width: '100%' }}>
+                        <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setSelectedClaim(null)}>
+                          Close Review
+                        </button>
+
+                        {selectedClaim.status === 'PENDING' && (
+                          <>
+                            <button 
+                              type="button"
+                              className="btn btn-danger" 
+                              style={{ flex: 1.5 }}
+                              onClick={() => handleProcessClaim(selectedClaim.id, 'REJECTED')}
+                              disabled={processingClaim}
+                            >
+                              <X size={18} /> Reject Claim
+                            </button>
+                            <button 
+                              type="button"
+                              className="btn btn-success" 
+                              style={{ flex: 1.5 }}
+                              onClick={() => handleProcessClaim(selectedClaim.id, 'APPROVED')}
+                              disabled={processingClaim}
+                            >
+                              <Check size={18} /> Approve Claim
+                            </button>
+                          </>
+                        )}
+
+                        {(selectedClaim.status === 'APPROVED' || selectedClaim.status === 'REJECTED') && !selectedClaim.isArchived && (
+                          <button
+                            type="button"
+                            className="btn"
+                            style={{ flex: 1.5, backgroundColor: 'hsl(var(--warning))', color: 'black', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                            onClick={() => handleArchiveClaim(selectedClaim.id)}
                             disabled={processingClaim}
                           >
-                            <X size={18} /> Reject Claim
+                            <ShieldCheck size={18} /> Archive Claim
                           </button>
-                          <button 
-                            className="btn btn-success" 
-                            style={{ flex: 1.5 }}
-                            onClick={() => handleProcessClaim(selectedClaim.id, 'APPROVED')}
-                            disabled={processingClaim}
-                          >
-                            <Check size={18} /> Approve Claim
-                          </button>
-                        </>
-                      )}
+                        )}
+                      </div>
                     </div>
                   </div>
 

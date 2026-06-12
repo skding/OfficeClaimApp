@@ -41,6 +41,7 @@ model Claim {
   amount          Float
   receiptUrl      String?  // path to the uploaded invoice/receipt image or PDF
   status          String   @default("PENDING") // 'PENDING', 'APPROVED', 'REJECTED'
+  isArchived      Boolean  @default(false)
   userId          String
   user            User     @relation(fields: [userId], references: [id])
   createdAt       DateTime @default(now())

@@ -43,6 +43,7 @@ export async function PUT(
     const amountStr = formData.get('amount') as string | null;
     const file = formData.get('file') as File | null;
     const status = formData.get('status') as string | null; // Admins can update status
+    const isArchivedStr = formData.get('isArchived') as string | null;
 
     const updateData: {
       supplierName?: string;
@@ -53,6 +54,7 @@ export async function PUT(
       amount?: number;
       status?: string;
       receiptUrl?: string;
+      isArchived?: boolean;
     } = {};
 
     if (supplierName) updateData.supplierName = supplierName;
@@ -74,6 +76,10 @@ export async function PUT(
         return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
       }
       updateData.status = status;
+    }
+
+    if (isArchivedStr !== null && user.role === 'ADMIN') {
+      updateData.isArchived = isArchivedStr === 'true';
     }
 
     if (file && file.size > 0) {
