@@ -91,9 +91,9 @@ npx prisma generate
 ```
 
 ### Seed Database (Optional):
-Seed default accounts and admin/staff users:
+Seed default accounts and admin/staff users (use `--env-file` to load the `.env` variables natively in Node):
 ```bash
-node prisma/seed.js
+node --env-file=.env prisma/seed.js
 ```
 
 ### Build the Application:
