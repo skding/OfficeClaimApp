@@ -83,7 +83,15 @@ Push the Prisma schema (which includes the `isArchived` field) to update your Po
 ```bash
 npx prisma db push
 ```
-*(Optional)* Seed default accounts and admin/staff users:
+
+### Generate Prisma Client:
+If the database push failed or was skipped, you must generate the client manually to avoid the `Cannot find module '.prisma/client/default'` error:
+```bash
+npx prisma generate
+```
+
+### Seed Database (Optional):
+Seed default accounts and admin/staff users:
 ```bash
 node prisma/seed.js
 ```
