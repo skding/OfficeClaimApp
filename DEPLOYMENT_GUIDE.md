@@ -64,9 +64,19 @@ Fill out the variables:
 - **`JWT_SECRET`**: Generate a strong random key (e.g., run `openssl rand -base64 32`).
 - **Google Cloud Document AI** credentials (optional, if OCR is needed).
 
----
-
 ## 2. Sync Database & Build
+
+### Create Database:
+If the database specified in your `DATABASE_URL` (e.g. `claims_db`) does not exist yet, Prisma will attempt to create it. If the connection user does not have database creation privileges, PostgreSQL returns a `permission denied to create database` error.
+
+To fix this, create the database manually on your Ubuntu server using the default `postgres` superuser:
+```bash
+# Create the database manually
+sudo -u postgres createdb claims_db
+
+# (Optional) If you are using a custom user, grant them permissions:
+# sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE claims_db TO your_db_user;"
+```
 
 ### Run Database Migrations:
 Push the Prisma schema (which includes the `isArchived` field) to update your PostgreSQL database structure:
