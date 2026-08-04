@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { 
   FileText, Plus, LogOut, Key, FileCheck, ClipboardList, 
   Upload, Camera, Loader2, Sparkles, Trash2, Calendar, 
-  DollarSign, Hash, Tag, FileClock, Check, X, AlertCircle
+  DollarSign, Hash, Tag, FileClock, Check, X, AlertCircle, ShieldCheck
 } from 'lucide-react';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 
@@ -27,6 +27,7 @@ interface Claim {
   accountId: string;
   account: Account;
   isArchived?: boolean;
+  isStaffArchived?: boolean;
 }
 
 export default function StaffDashboard() {
@@ -356,6 +357,36 @@ export default function StaffDashboard() {
     }
   };
 
+  // Staff Archive/Unarchive Claim handler
+  const handleArchiveClaim = async (id: string, archiveState: boolean = true) => {
+    setErrorMsg('');
+    try {
+      const formData = new FormData();
+      formData.append('isStaffArchived', archiveState ? 'true' : 'false');
+
+      const res = await fetch(`/api/claims/${id}`, {
+        method: 'PUT',
+        body: formData,
+      });
+
+      if (res.ok) {
+        setSuccessMsg(archiveState ? 'Claim archived successfully.' : 'Claim restored from archive.');
+        fetchClaims();
+        if (selectedClaim && selectedClaim.id === id) {
+          setIsCreating(false);
+          clearForm();
+        }
+        setTimeout(() => setSuccessMsg(''), 4000);
+      } else {
+        const data = await res.json();
+        setErrorMsg(data.error || 'Failed to update archive status');
+      }
+    } catch (e) {
+      console.error(e);
+      setErrorMsg('Operation failed');
+    }
+  };
+
   // Click on a claim to view/edit
   const handleSelectClaimForEdit = (claim: Claim) => {
     setSelectedClaim(claim);
@@ -372,6 +403,13 @@ export default function StaffDashboard() {
 
   // Filtering claims list
   const filteredClaims = claims.filter(c => {
+    const isArchived = Boolean(c.isStaffArchived || c.isArchived);
+    if (filterStatus === 'ARCHIVED') {
+      return isArchived;
+    }
+    if (isArchived) {
+      return false; // Exclude archived claims from active views
+    }
     if (filterStatus === 'ALL') return true;
     return c.status === filterStatus;
   });
@@ -550,7 +588,7 @@ export default function StaffDashboard() {
                 
                 {/* Filter buttons */}
                 <div className="glass" style={{ display: 'flex', padding: '0.25rem', borderRadius: '8px', gap: '0.25rem' }}>
-                  {['ALL', 'PENDING', 'APPROVED', 'REJECTED'].map((st) => (
+                  {['ALL', 'PENDING', 'APPROVED', 'REJECTED', 'ARCHIVED'].map((st) => (
                     <button
                       key={st}
                       className="btn"
@@ -602,44 +640,57 @@ export default function StaffDashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredClaims.map((claim) => (
-                        <tr key={claim.id}>
-                          <td>{new Date(claim.date).toLocaleDateString('en-MY', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
-                          <td style={{ fontWeight: 600 }}>{claim.supplierName}</td>
-                          <td><code>{claim.referenceNumber}</code></td>
-                          <td>
-                            <span style={{ fontSize: '0.85rem' }}>
-                              <strong>{claim.account.code}</strong> - {claim.account.name}
-                            </span>
-                          </td>
-                          <td>{claim.itemDescription}</td>
-                          <td style={{ fontWeight: 700 }}>RM {claim.amount.toFixed(2)}</td>
-                          <td>
-                            <span className={getStatusClass(claim.status)}>{claim.status}</span>
-                          </td>
-                          <td>
-                            <div style={{ display: 'flex', gap: '0.5rem' }}>
-                              <button 
-                                className="btn btn-secondary" 
-                                style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem' }}
-                                onClick={() => handleSelectClaimForEdit(claim)}
-                              >
-                                View / Edit
-                              </button>
-                              
-                              {claim.status === 'PENDING' && (
+                      {filteredClaims.map((claim) => {
+                        const isClaimArchived = Boolean(claim.isStaffArchived || claim.isArchived);
+                        return (
+                          <tr key={claim.id}>
+                            <td>{new Date(claim.date).toLocaleDateString('en-MY', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
+                            <td style={{ fontWeight: 600 }}>{claim.supplierName}</td>
+                            <td><code>{claim.referenceNumber}</code></td>
+                            <td>
+                              <span style={{ fontSize: '0.85rem' }}>
+                                <strong>{claim.account.code}</strong> - {claim.account.name}
+                              </span>
+                            </td>
+                            <td>{claim.itemDescription}</td>
+                            <td style={{ fontWeight: 700 }}>RM {claim.amount.toFixed(2)}</td>
+                            <td>
+                              <span className={getStatusClass(claim.status)}>{claim.status}</span>
+                            </td>
+                            <td>
+                              <div style={{ display: 'flex', gap: '0.5rem' }}>
                                 <button 
-                                  className="btn btn-danger" 
+                                  className="btn btn-secondary" 
                                   style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem' }}
-                                  onClick={() => handleDeleteClaim(claim.id)}
+                                  onClick={() => handleSelectClaimForEdit(claim)}
                                 >
-                                  <Trash2 size={14} />
+                                  View / Edit
                                 </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+
+                                <button 
+                                  className="btn btn-secondary" 
+                                  style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}
+                                  onClick={() => handleArchiveClaim(claim.id, !isClaimArchived)}
+                                  title={isClaimArchived ? 'Restore to active claims' : 'Move to archived'}
+                                >
+                                  <ShieldCheck size={13} />
+                                  <span>{isClaimArchived ? 'Unarchive' : 'Archive'}</span>
+                                </button>
+                                
+                                {claim.status === 'PENDING' && (
+                                  <button 
+                                    className="btn btn-danger" 
+                                    style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem' }}
+                                    onClick={() => handleDeleteClaim(claim.id)}
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -761,7 +812,7 @@ export default function StaffDashboard() {
                 </div>
 
                 {/* Bottom submit button */}
-                {(!selectedClaim || selectedClaim.status === 'PENDING') && (
+                {(!selectedClaim || selectedClaim.status === 'PENDING') ? (
                   <div style={{ display: 'flex', gap: '1rem' }}>
                     <button 
                       type="button" 
@@ -778,6 +829,26 @@ export default function StaffDashboard() {
                       disabled={loadingSubmit}
                     >
                       {loadingSubmit ? <Loader2 size={16} className="spin" /> : (selectedClaim ? 'Save Changes' : 'Submit Claim')}
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: '1rem' }}>
+                    <button 
+                      type="button" 
+                      className="btn btn-secondary" 
+                      style={{ flex: 1 }}
+                      onClick={() => { setIsCreating(false); clearForm(); }}
+                    >
+                      Back
+                    </button>
+                    <button 
+                      type="button" 
+                      className="btn btn-secondary" 
+                      style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}
+                      onClick={() => handleArchiveClaim(selectedClaim.id, !(selectedClaim.isStaffArchived || selectedClaim.isArchived))}
+                    >
+                      <ShieldCheck size={16} />
+                      <span>{(selectedClaim.isStaffArchived || selectedClaim.isArchived) ? 'Unarchive Claim' : 'Archive Claim'}</span>
                     </button>
                   </div>
                 )}

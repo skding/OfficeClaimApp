@@ -43,6 +43,7 @@ interface Claim {
     name: string;
   };
   isArchived: boolean;
+  isStaffArchived?: boolean;
 }
 
 type TabType = 'CLAIMS' | 'USERS' | 'ACCOUNTS' | 'EXPORT';
@@ -175,8 +176,8 @@ export default function AdminDashboard() {
     }
   };
 
-  // Process claim (Approve / Reject)
-  const handleProcessClaim = async (id: string, newStatus: 'APPROVED' | 'REJECTED') => {
+  // Process claim (Approve / Reject / Set Pending)
+  const handleProcessClaim = async (id: string, newStatus: 'APPROVED' | 'REJECTED' | 'PENDING') => {
     setProcessingClaim(true);
     setErrorMsg('');
     try {
@@ -205,12 +206,12 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleArchiveClaim = async (id: string) => {
+  const handleArchiveClaim = async (id: string, archiveState: boolean = true) => {
     setProcessingClaim(true);
     setErrorMsg('');
     try {
       const formData = new FormData();
-      formData.append('isArchived', 'true');
+      formData.append('isArchived', archiveState ? 'true' : 'false');
 
       const res = await fetch(`/api/claims/${id}`, {
         method: 'PUT',
@@ -219,10 +220,10 @@ export default function AdminDashboard() {
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || 'Failed to archive claim');
+        throw new Error(data.error || 'Failed to update archive status');
       }
 
-      setSuccessMsg('Claim archived successfully!');
+      setSuccessMsg(archiveState ? 'Claim archived successfully!' : 'Claim restored from archive!');
       setSelectedClaim(null); // close preview
       fetchClaims();
       setTimeout(() => setSuccessMsg(''), 4000);
@@ -819,45 +820,65 @@ export default function AdminDashboard() {
                         <Download size={18} /> Download PDF Report
                       </button>
 
-                      <div style={{ display: 'flex', gap: '1rem', width: '100%' }}>
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', width: '100%' }}>
                         <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setSelectedClaim(null)}>
-                          Close Review
+                          Close
                         </button>
 
-                        {selectedClaim.status === 'PENDING' && (
-                          <>
-                            <button 
-                              type="button"
-                              className="btn btn-danger" 
-                              style={{ flex: 1.5 }}
-                              onClick={() => handleProcessClaim(selectedClaim.id, 'REJECTED')}
-                              disabled={processingClaim}
-                            >
-                              <X size={18} /> Reject Claim
-                            </button>
-                            <button 
-                              type="button"
-                              className="btn btn-success" 
-                              style={{ flex: 1.5 }}
-                              onClick={() => handleProcessClaim(selectedClaim.id, 'APPROVED')}
-                              disabled={processingClaim}
-                            >
-                              <Check size={18} /> Approve Claim
-                            </button>
-                          </>
-                        )}
-
-                        {(selectedClaim.status === 'APPROVED' || selectedClaim.status === 'REJECTED') && !selectedClaim.isArchived && (
-                          <button
+                        {selectedClaim.status !== 'APPROVED' && (
+                          <button 
                             type="button"
-                            className="btn"
-                            style={{ flex: 1.5, backgroundColor: 'hsl(var(--warning))', color: 'black', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-                            onClick={() => handleArchiveClaim(selectedClaim.id)}
+                            className="btn btn-success" 
+                            style={{ flex: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}
+                            onClick={() => handleProcessClaim(selectedClaim.id, 'APPROVED')}
                             disabled={processingClaim}
                           >
-                            <ShieldCheck size={18} /> Archive Claim
+                            <Check size={16} /> Approve
                           </button>
                         )}
+
+                        {selectedClaim.status !== 'REJECTED' && (
+                          <button 
+                            type="button"
+                            className="btn btn-danger" 
+                            style={{ flex: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}
+                            onClick={() => handleProcessClaim(selectedClaim.id, 'REJECTED')}
+                            disabled={processingClaim}
+                          >
+                            <X size={16} /> Reject
+                          </button>
+                        )}
+
+                        {selectedClaim.status !== 'PENDING' && (
+                          <button 
+                            type="button"
+                            className="btn btn-secondary" 
+                            style={{ flex: 1.2 }}
+                            onClick={() => handleProcessClaim(selectedClaim.id, 'PENDING')}
+                            disabled={processingClaim}
+                          >
+                            Set Pending
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          className="btn"
+                          style={{ 
+                            flex: 1.5, 
+                            backgroundColor: selectedClaim.isArchived ? 'hsl(var(--primary))' : 'hsl(var(--warning))', 
+                            color: selectedClaim.isArchived ? 'white' : 'black', 
+                            border: 'none', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center', 
+                            gap: '0.35rem' 
+                          }}
+                          onClick={() => handleArchiveClaim(selectedClaim.id, !selectedClaim.isArchived)}
+                          disabled={processingClaim}
+                        >
+                          <ShieldCheck size={16} /> {selectedClaim.isArchived ? 'Unarchive' : 'Archive'}
+                        </button>
                       </div>
                     </div>
                   </div>

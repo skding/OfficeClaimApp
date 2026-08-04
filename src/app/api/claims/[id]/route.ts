@@ -24,16 +24,6 @@ export async function PUT(
       return NextResponse.json({ error: 'Claim not found' }, { status: 404 });
     }
 
-    // Role checks: Staff can only update their own claims and only if they are PENDING.
-    if (user.role === 'STAFF') {
-      if (existingClaim.userId !== user.id) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-      }
-      if (existingClaim.status !== 'PENDING') {
-        return NextResponse.json({ error: 'Cannot modify a processed claim' }, { status: 400 });
-      }
-    }
-
     const formData = await request.formData();
     const supplierName = formData.get('supplierName') as string | null;
     const referenceNumber = formData.get('referenceNumber') as string | null;
@@ -44,6 +34,22 @@ export async function PUT(
     const file = formData.get('file') as File | null;
     const status = formData.get('status') as string | null; // Admins can update status
     const isArchivedStr = formData.get('isArchived') as string | null;
+    const isStaffArchivedStr = formData.get('isStaffArchived') as string | null;
+
+    const isOnlyStaffArchiving = 
+      user.role === 'STAFF' &&
+      isStaffArchivedStr !== null &&
+      !supplierName && !referenceNumber && !dateStr && !accountId && !itemDescription && !amountStr && !file;
+
+    // Role checks: Staff can only update their own claims. Detail modifications require status === PENDING.
+    if (user.role === 'STAFF') {
+      if (existingClaim.userId !== user.id) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+      if (existingClaim.status !== 'PENDING' && !isOnlyStaffArchiving) {
+        return NextResponse.json({ error: 'Cannot modify details of a processed claim' }, { status: 400 });
+      }
+    }
 
     const updateData: {
       supplierName?: string;
@@ -55,6 +61,7 @@ export async function PUT(
       status?: string;
       receiptUrl?: string;
       isArchived?: boolean;
+      isStaffArchived?: boolean;
     } = {};
 
     if (supplierName) updateData.supplierName = supplierName;
@@ -80,6 +87,10 @@ export async function PUT(
 
     if (isArchivedStr !== null && user.role === 'ADMIN') {
       updateData.isArchived = isArchivedStr === 'true';
+    }
+
+    if (isStaffArchivedStr !== null) {
+      updateData.isStaffArchived = isStaffArchivedStr === 'true';
     }
 
     if (file && file.size > 0) {

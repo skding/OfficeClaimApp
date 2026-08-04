@@ -79,7 +79,7 @@ sudo -u postgres createdb claims_db
 ```
 
 ### Run Database Migrations:
-Push the Prisma schema (which includes the `isArchived` field) to update your PostgreSQL database structure:
+Push the Prisma schema (which includes the `isArchived` and `isStaffArchived` fields) to update your PostgreSQL database structure:
 ```bash
 npx prisma db push
 ```
