@@ -6,24 +6,58 @@ import prisma from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 
 function wrapText(text: string, maxWidth: number, fontSize: number, font: any): string[] {
-  const words = text.split(/\s+/);
+  if (!text) return ['-'];
+  const paragraphs = text.split(/\r?\n/);
   const lines: string[] = [];
-  let currentLine = '';
 
-  for (const word of words) {
-    const testLine = currentLine ? `${currentLine} ${word}` : word;
-    const testWidth = font.widthOfTextAtSize(testLine, fontSize);
-    if (testWidth > maxWidth) {
+  for (const para of paragraphs) {
+    const trimmed = para.trim();
+    if (!trimmed) continue;
+    const words = trimmed.split(/\s+/);
+    let currentLine = '';
+
+    for (const word of words) {
+      if (!word) continue;
+      const testLine = currentLine ? `${currentLine} ${word}` : word;
+      const testWidth = font.widthOfTextAtSize(testLine, fontSize);
+      if (testWidth > maxWidth) {
+        if (currentLine) {
+          lines.push(currentLine);
+          if (font.widthOfTextAtSize(word, fontSize) > maxWidth) {
+            let rem = word;
+            while (rem.length > 0) {
+              let splitAt = rem.length;
+              while (splitAt > 1 && font.widthOfTextAtSize(rem.substring(0, splitAt), fontSize) > maxWidth) {
+                splitAt--;
+              }
+              lines.push(rem.substring(0, splitAt));
+              rem = rem.substring(splitAt);
+            }
+            currentLine = '';
+          } else {
+            currentLine = word;
+          }
+        } else {
+          let rem = word;
+          while (rem.length > 0) {
+            let splitAt = rem.length;
+            while (splitAt > 1 && font.widthOfTextAtSize(rem.substring(0, splitAt), fontSize) > maxWidth) {
+              splitAt--;
+            }
+            lines.push(rem.substring(0, splitAt));
+            rem = rem.substring(splitAt);
+          }
+          currentLine = '';
+        }
+      } else {
+        currentLine = testLine;
+      }
+    }
+    if (currentLine) {
       lines.push(currentLine);
-      currentLine = word;
-    } else {
-      currentLine = testLine;
     }
   }
-  if (currentLine) {
-    lines.push(currentLine);
-  }
-  return lines;
+  return lines.length > 0 ? lines : ['-'];
 }
 
 export async function GET(

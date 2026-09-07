@@ -6,24 +6,60 @@ import prisma from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 
 function wrapText(text: string, maxWidth: number, fontSize: number, font: any): string[] {
-  const words = text.split(/\s+/);
+  if (!text) return ['-'];
+  const paragraphs = text.split(/\r?\n/);
   const lines: string[] = [];
-  let currentLine = '';
 
-  for (const word of words) {
-    const testLine = currentLine ? `${currentLine} ${word}` : word;
-    const testWidth = font.widthOfTextAtSize(testLine, fontSize);
-    if (testWidth > maxWidth) {
+  for (const para of paragraphs) {
+    const trimmed = para.trim();
+    if (!trimmed) continue;
+    const words = trimmed.split(/\s+/);
+    let currentLine = '';
+
+    for (const word of words) {
+      if (!word) continue;
+      const testLine = currentLine ? `${currentLine} ${word}` : word;
+      const testWidth = font.widthOfTextAtSize(testLine, fontSize);
+      if (testWidth > maxWidth) {
+        if (currentLine) {
+          lines.push(currentLine);
+          // If the word by itself is wider than maxWidth, break it down
+          if (font.widthOfTextAtSize(word, fontSize) > maxWidth) {
+            let rem = word;
+            while (rem.length > 0) {
+              let splitAt = rem.length;
+              while (splitAt > 1 && font.widthOfTextAtSize(rem.substring(0, splitAt), fontSize) > maxWidth) {
+                splitAt--;
+              }
+              lines.push(rem.substring(0, splitAt));
+              rem = rem.substring(splitAt);
+            }
+            currentLine = '';
+          } else {
+            currentLine = word;
+          }
+        } else {
+          // currentLine is empty and single word is wider than maxWidth
+          let rem = word;
+          while (rem.length > 0) {
+            let splitAt = rem.length;
+            while (splitAt > 1 && font.widthOfTextAtSize(rem.substring(0, splitAt), fontSize) > maxWidth) {
+              splitAt--;
+            }
+            lines.push(rem.substring(0, splitAt));
+            rem = rem.substring(splitAt);
+          }
+          currentLine = '';
+        }
+      } else {
+        currentLine = testLine;
+      }
+    }
+    if (currentLine) {
       lines.push(currentLine);
-      currentLine = word;
-    } else {
-      currentLine = testLine;
     }
   }
-  if (currentLine) {
-    lines.push(currentLine);
-  }
-  return lines;
+  return lines.length > 0 ? lines : ['-'];
 }
 
 export async function GET(
@@ -186,11 +222,10 @@ export async function GET(
       };
 
       drawHeaderCell('Date', 40);
-      drawHeaderCell('Supplier', 110);
-      drawHeaderCell('Ref Number', 200);
-      drawHeaderCell('Category', 290);
-      drawHeaderCell('Description', 380);
-      drawHeaderCell('Amount', 490);
+      drawHeaderCell('Supplier / Merchant', 105);
+      drawHeaderCell('Ref / Invoice No.', 220);
+      drawHeaderCell('Account Category', 320);
+      drawHeaderCell('Amount (RM)', 445);
     };
 
     if (claims.length === 0) {
@@ -207,72 +242,138 @@ export async function GET(
 
       let currentPage = page;
 
-      for (const claim of claims) {
-        // Page overflow check
-        if (currentY < 65) {
+      for (let i = 0; i < claims.length; i++) {
+        const claim = claims[i];
+
+        // Format metadata fields with multi-line wrapping
+        const claimDateStr = new Date(claim.date).toLocaleDateString('en-MY', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        });
+        const supplierLines = wrapText(claim.supplierName || '-', 110, 8, helvetica);
+        const refLines = wrapText(claim.referenceNumber || '-', 95, 8, helvetica);
+        const catLines = wrapText(`${claim.account.code} - ${claim.account.name}`, 120, 8, helvetica);
+        const amtStr = `RM ${claim.amount.toFixed(2)}`;
+
+        // Row 1 (Info) dimensions
+        const row1LinesCount = Math.max(supplierLines.length, refLines.length, catLines.length, 1);
+        const row1Height = row1LinesCount * 11 + 4;
+
+        // Row 2 (Description) dimensions
+        const descLines = wrapText(claim.itemDescription || '-', 445, 7.5, helvetica);
+        const row2Height = descLines.length * 9.5 + 4;
+
+        // Total 2-row item height
+        const itemBlockHeight = row1Height + row2Height + 4;
+
+        // Page overflow check before drawing this item
+        if (currentY - itemBlockHeight < 65) {
           currentPage = pdfDoc.addPage([595, 842]);
           currentY = height - 60;
           drawHeaders(currentPage, currentY);
           currentY -= 20;
         }
 
-        // Alternating row background
-        const isAltRow = claims.indexOf(claim) % 2 === 1;
+        // Alternating row background for entire 2-row item block
+        const isAltRow = i % 2 === 1;
         if (isAltRow) {
           currentPage.drawRectangle({
             x: 40,
-            y: currentY - 4,
+            y: currentY - itemBlockHeight + 2,
             width: 515,
-            height: 16,
-            color: rgb(0.96, 0.97, 0.98),
+            height: itemBlockHeight - 2,
+            color: rgb(0.96, 0.97, 0.99),
           });
         }
 
-        const drawCellText = (text: string, xPos: number, isAmount = false) => {
-          currentPage.drawText(text, {
-            x: xPos + 5,
-            y: currentY,
-            size: 8,
-            font: isAmount ? helveticaBold : helvetica,
-            color: rgb(0.15, 0.15, 0.15),
-          });
-        };
+        // --- ROW 1: Claim Metadata ---
+        const row1TopY = currentY - 9;
 
-        const claimDateStr = new Date(claim.date).toLocaleDateString('en-MY', { year: 'numeric', month: '2-digit', day: '2-digit' });
-        drawCellText(claimDateStr, 40);
-
-        const truncate = (str: string, maxW: number, fontSize: number) => {
-          let testStr = str;
-          let width = helvetica.widthOfTextAtSize(testStr, fontSize);
-          if (width <= maxW) return testStr;
-          while (width > maxW - 10 && testStr.length > 0) {
-            testStr = testStr.substring(0, testStr.length - 1);
-            width = helvetica.widthOfTextAtSize(testStr + '...', fontSize);
-          }
-          return testStr + '...';
-        };
-
-        drawCellText(truncate(claim.supplierName, 80, 8), 110);
-        drawCellText(truncate(claim.referenceNumber, 80, 8), 200);
-        drawCellText(`${claim.account.code}`, 290);
-        drawCellText(truncate(claim.itemDescription, 100, 8), 380);
-
-        const amtStr = `RM ${claim.amount.toFixed(2)}`;
-        drawCellText(amtStr, 490, true);
-
-        // Border separator line
-        currentPage.drawLine({
-          start: { x: 40, y: currentY - 5 },
-          end: { x: 555, y: currentY - 5 },
-          thickness: 0.5,
-          color: rgb(0.88, 0.9, 0.92),
+        // Date
+        currentPage.drawText(claimDateStr, {
+          x: 45,
+          y: row1TopY,
+          size: 8,
+          font: helvetica,
+          color: rgb(0.15, 0.15, 0.15),
         });
 
-        currentY -= 18;
+        // Supplier (Multi-line)
+        supplierLines.forEach((line, idx) => {
+          currentPage.drawText(line, {
+            x: 110,
+            y: row1TopY - idx * 11,
+            size: 8,
+            font: helvetica,
+            color: rgb(0.15, 0.15, 0.15),
+          });
+        });
+
+        // Ref Number (Multi-line)
+        refLines.forEach((line, idx) => {
+          currentPage.drawText(line, {
+            x: 225,
+            y: row1TopY - idx * 11,
+            size: 8,
+            font: helvetica,
+            color: rgb(0.15, 0.15, 0.15),
+          });
+        });
+
+        // Category (Multi-line)
+        catLines.forEach((line, idx) => {
+          currentPage.drawText(line, {
+            x: 325,
+            y: row1TopY - idx * 11,
+            size: 8,
+            font: helvetica,
+            color: rgb(0.15, 0.15, 0.15),
+          });
+        });
+
+        // Amount
+        currentPage.drawText(amtStr, {
+          x: 450,
+          y: row1TopY,
+          size: 8.5,
+          font: helveticaBold,
+          color: rgb(0.12, 0.15, 0.27),
+        });
+
+        // --- ROW 2: Item Description (Spanning width) ---
+        const row2TopY = currentY - row1Height - 3;
+        currentPage.drawText('Description:', {
+          x: 45,
+          y: row2TopY,
+          size: 7.5,
+          font: helveticaBold,
+          color: rgb(0.4, 0.45, 0.5),
+        });
+
+        descLines.forEach((line, idx) => {
+          currentPage.drawText(line, {
+            x: 100,
+            y: row2TopY - idx * 9.5,
+            size: 7.5,
+            font: helvetica,
+            color: rgb(0.25, 0.28, 0.32),
+          });
+        });
+
+        // Item bottom separator line
+        currentPage.drawLine({
+          start: { x: 40, y: currentY - itemBlockHeight },
+          end: { x: 555, y: currentY - itemBlockHeight },
+          thickness: 0.5,
+          color: rgb(0.85, 0.88, 0.9),
+        });
+
+        currentY -= itemBlockHeight + 2;
       }
 
       // Draw Total block
-      if (currentY < 85) {
+      if (currentY < 90) {
         currentPage = pdfDoc.addPage([595, 842]);
         currentY = height - 60;
       }
@@ -296,7 +397,7 @@ export async function GET(
 
       const totalAmtText = `RM ${totalAmountSum.toFixed(2)}`;
       currentPage.drawText(totalAmtText, {
-        x: 495,
+        x: 450,
         y: currentY,
         size: 9.5,
         font: helveticaBold,
