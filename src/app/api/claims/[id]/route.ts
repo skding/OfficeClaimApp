@@ -31,6 +31,7 @@ export async function PUT(
     const accountId = formData.get('accountId') as string | null;
     const itemDescription = formData.get('itemDescription') as string | null;
     const amountStr = formData.get('amount') as string | null;
+    const claimType = formData.get('claimType') as string | null;
     const file = formData.get('file') as File | null;
     const status = formData.get('status') as string | null; // Admins can update status
     const isArchivedStr = formData.get('isArchived') as string | null;
@@ -59,6 +60,7 @@ export async function PUT(
       itemDescription?: string;
       amount?: number;
       status?: string;
+      claimType?: string;
       receiptUrl?: string;
       isArchived?: boolean;
       isStaffArchived?: boolean;
@@ -69,6 +71,9 @@ export async function PUT(
     if (dateStr) updateData.date = new Date(dateStr);
     if (accountId) updateData.accountId = accountId;
     if (itemDescription) updateData.itemDescription = itemDescription;
+    if (claimType && (claimType === 'EXPENSE' || claimType === 'PAYROLL')) {
+      updateData.claimType = claimType;
+    }
 
     if (amountStr) {
       const amount = parseFloat(amountStr);

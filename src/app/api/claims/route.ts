@@ -14,8 +14,9 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId');
     const status = searchParams.get('status');
+    const claimType = searchParams.get('claimType');
 
-    const where: { userId?: string; status?: string } = {};
+    const where: { userId?: string; status?: string; claimType?: string } = {};
 
     // Staff can only view their own claims.
     // Admin can view all claims or filter by a specific userId
@@ -27,6 +28,10 @@ export async function GET(request: Request) {
 
     if (status) {
       where.status = status;
+    }
+
+    if (claimType) {
+      where.claimType = claimType;
     }
 
     const claims = await prisma.claim.findMany({
@@ -63,6 +68,8 @@ export async function POST(request: Request) {
     const accountId = formData.get('accountId') as string;
     const itemDescription = formData.get('itemDescription') as string;
     const amountStr = formData.get('amount') as string;
+    const claimTypeRaw = formData.get('claimType') as string | null;
+    const claimType = claimTypeRaw === 'PAYROLL' ? 'PAYROLL' : 'EXPENSE';
     const file = formData.get('file') as File | null;
 
     if (!supplierName || !referenceNumber || !dateStr || !accountId || !itemDescription || !amountStr) {
@@ -102,6 +109,7 @@ export async function POST(request: Request) {
         receiptUrl,
         userId: user.id,
         status: 'PENDING',
+        claimType,
       },
       include: {
         account: true,

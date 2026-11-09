@@ -33,6 +33,7 @@ interface Claim {
   itemDescription: string;
   receiptUrl: string | null;
   status: string;
+  claimType?: string;
   userId: string;
   user: {
     name: string;
@@ -456,7 +457,10 @@ export default function AdminDashboard() {
             </div>
             <div>
               <h2 style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>Office Claim</h2>
-              <span style={{ fontSize: '0.75rem', color: 'hsl(var(--accent))', fontWeight: 600 }}>ADMIN PORTAL</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <span style={{ fontSize: '0.75rem', color: 'hsl(var(--accent))', fontWeight: 600 }}>ADMIN PORTAL</span>
+                <span style={{ fontSize: '0.65rem', background: 'hsl(var(--bg-card))', border: '1px solid hsl(var(--border-color))', borderRadius: '4px', padding: '1px 5px', color: 'hsl(var(--text-muted))' }}>v1.0.0</span>
+              </div>
             </div>
           </div>
 
@@ -597,7 +601,7 @@ export default function AdminDashboard() {
                     <p style={{ fontSize: '0.8rem', color: 'hsl(var(--text-secondary))' }}>Click on a claim row to review and approve/reject the submission.</p>
                   </div>
 
-                  {filterClaimsUser !== 'ALL' && (
+                  {filterClaimsUser !== 'ALL' ? (
                     <button
                       type="button"
                       className="btn btn-primary"
@@ -605,13 +609,18 @@ export default function AdminDashboard() {
                         let url = `/api/admin/users/${filterClaimsUser}/report?`;
                         if (filterStartDate) url += `startDate=${filterStartDate}&`;
                         if (filterEndDate) url += `endDate=${filterEndDate}&`;
+                        if (filterClaimsStatus === 'ARCHIVED') url += `archived=true&`;
                         window.open(url, '_blank');
                       }}
                       style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', fontSize: '0.8rem', borderRadius: '8px' }}
                     >
                       <FileText size={15} />
-                      <span>Print Summary & Receipts</span>
+                      <span>{filterClaimsStatus === 'ARCHIVED' ? 'Reprint Archived Summary & Receipts' : 'Print Summary & Receipts'}</span>
                     </button>
+                  ) : (
+                    <span style={{ fontSize: '0.75rem', color: 'hsl(var(--text-muted))', padding: '0.4rem 0.6rem', border: '1px dashed hsl(var(--border-color))', borderRadius: '8px' }}>
+                      Select an employee below to {filterClaimsStatus === 'ARCHIVED' ? 'reprint archived summary' : 'print summary report'}
+                    </span>
                   )}
                 </div>
 
@@ -725,6 +734,7 @@ export default function AdminDashboard() {
                     <thead>
                       <tr>
                         <th>Employee</th>
+                        <th>Type</th>
                         <th>Date</th>
                         <th>Supplier</th>
                         <th>Reference</th>
@@ -738,6 +748,20 @@ export default function AdminDashboard() {
                       {filteredClaims.map((claim) => (
                         <tr key={claim.id} style={{ cursor: 'pointer' }} onClick={() => setSelectedClaim(claim)}>
                           <td style={{ fontWeight: 600 }}>{claim.user.name}</td>
+                          <td>
+                            <span style={{
+                              fontSize: '0.7rem',
+                              fontWeight: 600,
+                              padding: '2px 7px',
+                              borderRadius: '6px',
+                              background: claim.claimType === 'PAYROLL' ? 'hsl(150, 45%, 18%)' : 'hsl(var(--bg-card))',
+                              color: claim.claimType === 'PAYROLL' ? '#86efac' : 'hsl(var(--text-secondary))',
+                              border: '1px solid hsl(var(--border-color))',
+                              whiteSpace: 'nowrap'
+                            }}>
+                              {claim.claimType === 'PAYROLL' ? 'Site Allowance' : 'Expense'}
+                            </span>
+                          </td>
                           <td>{new Date(claim.date).toLocaleDateString('en-MY', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
                           <td>{claim.supplierName}</td>
                           <td><code>{claim.referenceNumber}</code></td>
@@ -787,6 +811,22 @@ export default function AdminDashboard() {
                           <span style={{ color: 'hsl(var(--text-muted))' }}>Employee:</span>
                           <strong>{selectedClaim.user.name} (@{selectedClaim.user.username})</strong>
 
+                          <span style={{ color: 'hsl(var(--text-muted))' }}>Claim Category:</span>
+                          <div>
+                            <span style={{
+                              display: 'inline-block',
+                              fontSize: '0.8rem',
+                              fontWeight: 600,
+                              padding: '2px 8px',
+                              borderRadius: '6px',
+                              background: selectedClaim.claimType === 'PAYROLL' ? 'hsl(150, 45%, 18%)' : 'hsl(var(--bg-card))',
+                              color: selectedClaim.claimType === 'PAYROLL' ? '#86efac' : 'hsl(var(--text-primary))',
+                              border: '1px solid hsl(var(--border-color))'
+                            }}>
+                              {selectedClaim.claimType === 'PAYROLL' ? 'Site Allowance (Payroll)' : 'Expense Claim'}
+                            </span>
+                          </div>
+
                           <span style={{ color: 'hsl(var(--text-muted))' }}>Supplier:</span>
                           <strong>{selectedClaim.supplierName}</strong>
 
@@ -817,7 +857,20 @@ export default function AdminDashboard() {
                         onClick={() => window.open(`/api/admin/claims/${selectedClaim.id}/report`, '_blank')}
                         style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', width: '100%' }}
                       >
-                        <Download size={18} /> Download PDF Report
+                        <Download size={18} /> Download Single Claim PDF
+                      </button>
+
+                      <button 
+                        type="button"
+                        className="btn btn-secondary" 
+                        onClick={() => {
+                          let url = `/api/admin/users/${selectedClaim.userId}/report?`;
+                          if (selectedClaim.isArchived) url += 'archived=true&';
+                          window.open(url, '_blank');
+                        }}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', width: '100%' }}
+                      >
+                        <FileText size={18} /> {selectedClaim.isArchived ? 'Reprint Archived Employee Summary & Receipts' : 'Print Employee Summary & Receipts'}
                       </button>
 
                       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', width: '100%' }}>
@@ -1211,8 +1264,8 @@ export default function AdminDashboard() {
                         style={{ accentColor: 'hsl(var(--primary))' }}
                       />
                       <div>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>Simple Template</div>
-                        <div style={{ fontSize: '0.7rem', color: 'hsl(var(--text-muted))' }}>Basic fields: Employee, Account, Descr, Amount</div>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>Simple Template (v2)</div>
+                        <div style={{ fontSize: '0.7rem', color: 'hsl(var(--text-muted))' }}>Bukku v2 Simple: Contact Code/Legal Name, Account, Amount</div>
                       </div>
                     </label>
 
@@ -1235,11 +1288,23 @@ export default function AdminDashboard() {
                         style={{ accentColor: 'hsl(var(--primary))' }}
                       />
                       <div>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>Extended Template</div>
-                        <div style={{ fontSize: '0.7rem', color: 'hsl(var(--text-muted))' }}>Full details: Supplier, qty, discounts, unit prices</div>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>Extended Template (v2)</div>
+                        <div style={{ fontSize: '0.7rem', color: 'hsl(var(--text-muted))' }}>Bukku v2 Extended: Supplier/Employee codes, items, unit prices</div>
                       </div>
                     </label>
                   </div>
+                </div>
+
+                <div style={{
+                  fontSize: '0.78rem',
+                  color: 'hsl(var(--text-secondary))',
+                  padding: '0.75rem 1rem',
+                  background: 'hsl(var(--bg-card))',
+                  borderRadius: '8px',
+                  border: '1px solid hsl(var(--border-color))',
+                  lineHeight: 1.4
+                }}>
+                  <strong style={{ color: 'hsl(var(--primary))' }}>Filter Note:</strong> Only standard expense claims are exported to Bukku. Claims categorized as <em>Site Allowance (Payroll)</em> are automatically excluded from the export file.
                 </div>
 
                 <button 

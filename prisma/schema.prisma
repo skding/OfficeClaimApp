@@ -41,6 +41,7 @@ model Claim {
   amount          Float
   receiptUrl      String?  // path to the uploaded invoice/receipt image or PDF
   status          String   @default("PENDING") // 'PENDING', 'APPROVED', 'REJECTED'
+  claimType       String   @default("EXPENSE") // 'EXPENSE' or 'PAYROLL'
   isArchived      Boolean  @default(false)
   isStaffArchived Boolean  @default(false)
   userId          String

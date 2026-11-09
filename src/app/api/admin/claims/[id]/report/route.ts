@@ -192,6 +192,7 @@ export async function GET(
 
     drawRow('Claim ID:', claim.id);
     drawRow('Employee Name:', `${claim.user.name} (@${claim.user.username})`);
+    drawRow('Claim Category:', claim.claimType === 'PAYROLL' ? 'Site Allowance (Payroll)' : 'Expense Claim');
     drawRow('Supplier / Vendor:', claim.supplierName);
     drawRow('Reference Number:', claim.referenceNumber);
     drawRow('Expense Date:', new Date(claim.date).toLocaleDateString('en-MY', { year: 'numeric', month: 'long', day: 'numeric' }));

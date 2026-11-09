@@ -23,7 +23,6 @@ function wrapText(text: string, maxWidth: number, fontSize: number, font: any): 
       if (testWidth > maxWidth) {
         if (currentLine) {
           lines.push(currentLine);
-          // If the word by itself is wider than maxWidth, break it down
           if (font.widthOfTextAtSize(word, fontSize) > maxWidth) {
             let rem = word;
             while (rem.length > 0) {
@@ -39,7 +38,6 @@ function wrapText(text: string, maxWidth: number, fontSize: number, font: any): 
             currentLine = word;
           }
         } else {
-          // currentLine is empty and single word is wider than maxWidth
           let rem = word;
           while (rem.length > 0) {
             let splitAt = rem.length;
@@ -77,6 +75,8 @@ export async function GET(
     const { searchParams } = new URL(request.url);
     const startDateStr = searchParams.get('startDate');
     const endDateStr = searchParams.get('endDate');
+    const archivedParam = searchParams.get('archived') || searchParams.get('isArchived');
+    const isArchived = archivedParam === 'true';
 
     // Fetch employee details
     const employee = await prisma.user.findUnique({
@@ -96,7 +96,7 @@ export async function GET(
     const where: any = {
       userId: id,
       status: 'APPROVED',
-      isArchived: false,
+      isArchived: isArchived,
     };
 
     if (startDateStr || endDateStr) {
@@ -105,7 +105,6 @@ export async function GET(
         where.date.gte = new Date(startDateStr);
       }
       if (endDateStr) {
-        // Include full day
         const end = new Date(endDateStr);
         end.setHours(23, 59, 59, 999);
         where.date.lte = end;
@@ -121,33 +120,45 @@ export async function GET(
       orderBy: { date: 'asc' },
     });
 
+    // Requirement 2: Split into 2 groups
+    const expenseClaims = claims.filter((c) => c.claimType !== 'PAYROLL');
+    const payrollClaims = claims.filter((c) => c.claimType === 'PAYROLL');
+
+    const expenseSubtotal = expenseClaims.reduce((sum, c) => sum + c.amount, 0);
+    const payrollSubtotal = payrollClaims.reduce((sum, c) => sum + c.amount, 0);
+    const grandTotal = expenseSubtotal + payrollSubtotal;
+
     // Initialize PDF Document
     const pdfDoc = await PDFDocument.create();
     const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-    // Create Page 1 (A4 size: 595 x 842 points)
-    let page = pdfDoc.addPage([595, 842]);
-    const { width, height } = page.getSize();
+    // Create Page 1 (A4: 595 x 842 points)
+    let currentPage = pdfDoc.addPage([595, 842]);
+    const { width, height } = currentPage.getSize();
 
-    // Draw Sleek Header Banner
-    page.drawRectangle({
+    // ─── HEADER BANNER ───────────────────────────────────────────────────────
+    currentPage.drawRectangle({
       x: 40,
       y: height - 95,
       width: width - 80,
       height: 55,
-      color: rgb(0.12, 0.15, 0.27),
+      color: isArchived ? rgb(0.2, 0.15, 0.28) : rgb(0.12, 0.15, 0.27),
     });
 
-    page.drawText('EMPLOYEE CLAIMS SUMMARY REPORT', {
+    const reportTitle = isArchived
+      ? 'EMPLOYEE CLAIMS SUMMARY REPORT (ARCHIVED)'
+      : 'EMPLOYEE CLAIMS SUMMARY REPORT';
+
+    currentPage.drawText(reportTitle, {
       x: 55,
       y: height - 72,
-      size: 14,
+      size: 13,
       font: helveticaBold,
       color: rgb(1, 1, 1),
     });
 
-    let rangeStr = 'All Active Approved Claims';
+    let rangeStr = isArchived ? 'Archived Approved Records' : 'All Active Approved Claims';
     if (startDateStr && endDateStr) {
       rangeStr = `Date Period: ${startDateStr} to ${endDateStr}`;
     } else if (startDateStr) {
@@ -156,10 +167,10 @@ export async function GET(
       rangeStr = `Date Period: Until ${endDateStr}`;
     }
 
-    page.drawText(rangeStr, {
+    currentPage.drawText(rangeStr, {
       x: 55,
       y: height - 88,
-      size: 9,
+      size: 8.5,
       font: helvetica,
       color: rgb(0.8, 0.8, 0.8),
     });
@@ -172,7 +183,7 @@ export async function GET(
       minute: '2-digit',
     });
 
-    page.drawText(`Generated: ${nowStr}`, {
+    currentPage.drawText(`Generated: ${nowStr}`, {
       x: width - 220,
       y: height - 72,
       size: 8,
@@ -180,27 +191,87 @@ export async function GET(
       color: rgb(0.8, 0.8, 0.8),
     });
 
-    // Draw Employee profile card
-    page.drawRectangle({
+    if (isArchived) {
+      currentPage.drawRectangle({
+        x: width - 220,
+        y: height - 90,
+        width: 100,
+        height: 14,
+        color: rgb(0.5, 0.3, 0.6),
+      });
+      currentPage.drawText('ARCHIVED REPRINT', {
+        x: width - 212,
+        y: height - 86,
+        size: 7,
+        font: helveticaBold,
+        color: rgb(1, 1, 1),
+      });
+    }
+
+    // ─── EMPLOYEE PROFILE CARD WITH SUBTOTAL SUMMARY ────────────────────────
+    currentPage.drawRectangle({
       x: 40,
-      y: height - 150,
+      y: height - 165,
       width: width - 80,
-      height: 45,
+      height: 60,
       color: rgb(0.96, 0.97, 0.99),
       borderColor: rgb(0.85, 0.88, 0.9),
       borderWidth: 1,
     });
 
-    page.drawText('EMPLOYEE PROFILE:', { x: 50, y: height - 120, size: 8, font: helveticaBold, color: rgb(0.4, 0.45, 0.5) });
-    page.drawText(`Name: ${employee.name || employee.username}`, { x: 50, y: height - 134, size: 10, font: helveticaBold, color: rgb(0.1, 0.1, 0.15) });
-    page.drawText(`Username: @${employee.username}`, { x: 50, y: height - 144, size: 9, font: helvetica, color: rgb(0.3, 0.3, 0.3) });
+    currentPage.drawText('EMPLOYEE PROFILE:', {
+      x: 50,
+      y: height - 120,
+      size: 8,
+      font: helveticaBold,
+      color: rgb(0.4, 0.45, 0.5),
+    });
+    currentPage.drawText(`Name: ${employee.name || employee.username}`, {
+      x: 50,
+      y: height - 134,
+      size: 10,
+      font: helveticaBold,
+      color: rgb(0.1, 0.1, 0.15),
+    });
+    currentPage.drawText(`Username: @${employee.username}`, {
+      x: 50,
+      y: height - 146,
+      size: 8.5,
+      font: helvetica,
+      color: rgb(0.3, 0.3, 0.3),
+    });
+    currentPage.drawText(`Approved Claims: ${claims.length} total (${expenseClaims.length} Expense, ${payrollClaims.length} Allowance)`, {
+      x: 50,
+      y: height - 158,
+      size: 8,
+      font: helvetica,
+      color: rgb(0.45, 0.5, 0.55),
+    });
 
-    page.drawText(`Approved Claims: ${claims.length}`, { x: width - 240, y: height - 130, size: 9, font: helvetica, color: rgb(0.2, 0.2, 0.2) });
-    const totalAmountSum = claims.reduce((sum, c) => sum + c.amount, 0);
-    page.drawText(`Total Amount: RM ${totalAmountSum.toFixed(2)}`, { x: width - 240, y: height - 144, size: 10, font: helveticaBold, color: rgb(0.44, 0.35, 0.95) });
+    // Subtotals breakdown on right side of profile card
+    currentPage.drawText(`Expense Subtotal: RM ${expenseSubtotal.toFixed(2)}`, {
+      x: width - 230,
+      y: height - 120,
+      size: 8.5,
+      font: helvetica,
+      color: rgb(0.2, 0.25, 0.3),
+    });
+    currentPage.drawText(`Payroll Allowance: RM ${payrollSubtotal.toFixed(2)}`, {
+      x: width - 230,
+      y: height - 133,
+      size: 8.5,
+      font: helvetica,
+      color: rgb(0.2, 0.25, 0.3),
+    });
+    currentPage.drawText(`TOTAL CLAIM: RM ${grandTotal.toFixed(2)}`, {
+      x: width - 230,
+      y: height - 150,
+      size: 11,
+      font: helveticaBold,
+      color: rgb(0.44, 0.35, 0.95),
+    });
 
-    // Table coordinates & helpers
-    let currentY = height - 180;
+    let currentY = height - 195;
 
     const drawHeaders = (p: any, yPos: number) => {
       p.drawRectangle({
@@ -229,186 +300,289 @@ export async function GET(
     };
 
     if (claims.length === 0) {
-      page.drawText('No active approved claims found for this employee matching the filter criteria.', {
-        x: 50,
-        y: currentY - 30,
-        size: 10,
-        font: helvetica,
-        color: rgb(0.5, 0.5, 0.5),
-      });
+      currentPage.drawText(
+        isArchived
+          ? 'No archived approved claims found for this employee matching the filter criteria.'
+          : 'No active approved claims found for this employee matching the filter criteria.',
+        {
+          x: 50,
+          y: currentY - 20,
+          size: 10,
+          font: helvetica,
+          color: rgb(0.5, 0.5, 0.5),
+        }
+      );
     } else {
-      drawHeaders(page, currentY);
-      currentY -= 20;
-
-      let currentPage = page;
-
-      for (let i = 0; i < claims.length; i++) {
-        const claim = claims[i];
-
-        // Format metadata fields with multi-line wrapping
-        const claimDateStr = new Date(claim.date).toLocaleDateString('en-MY', {
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-        });
-        const supplierLines = wrapText(claim.supplierName || '-', 110, 8, helvetica);
-        const refLines = wrapText(claim.referenceNumber || '-', 95, 8, helvetica);
-        const catLines = wrapText(`${claim.account.code} - ${claim.account.name}`, 120, 8, helvetica);
-        const amtStr = `RM ${claim.amount.toFixed(2)}`;
-
-        // Row 1 (Info) dimensions
-        const row1LinesCount = Math.max(supplierLines.length, refLines.length, catLines.length, 1);
-        const row1Height = row1LinesCount * 11 + 4;
-
-        // Row 2 (Description) dimensions
-        const descLines = wrapText(claim.itemDescription || '-', 445, 7.5, helvetica);
-        const row2Height = descLines.length * 9.5 + 4;
-
-        // Total 2-row item height
-        const itemBlockHeight = row1Height + row2Height + 4;
-
-        // Page overflow check before drawing this item
-        if (currentY - itemBlockHeight < 65) {
+      // ─── FUNCTION TO DRAW A CLAIM GROUP ──────────────────────────────────
+      const renderGroup = (
+        groupTitle: string,
+        groupClaims: typeof claims,
+        subtotal: number,
+        badgeColor: { r: number; g: number; b: number }
+      ) => {
+        // Group Header Banner
+        if (currentY - 35 < 65) {
           currentPage = pdfDoc.addPage([595, 842]);
           currentY = height - 60;
-          drawHeaders(currentPage, currentY);
-          currentY -= 20;
         }
 
-        // Alternating row background for entire 2-row item block
-        const isAltRow = i % 2 === 1;
-        if (isAltRow) {
+        currentPage.drawRectangle({
+          x: 40,
+          y: currentY - 8,
+          width: 515,
+          height: 22,
+          color: rgb(badgeColor.r, badgeColor.g, badgeColor.b),
+        });
+
+        currentPage.drawText(groupTitle.toUpperCase(), {
+          x: 50,
+          y: currentY,
+          size: 9.5,
+          font: helveticaBold,
+          color: rgb(1, 1, 1),
+        });
+
+        const countText = `(${groupClaims.length} item${groupClaims.length === 1 ? '' : 's'})`;
+        currentPage.drawText(countText, {
+          x: 50 + helveticaBold.widthOfTextAtSize(groupTitle.toUpperCase(), 9.5) + 8,
+          y: currentY,
+          size: 8.5,
+          font: helvetica,
+          color: rgb(0.85, 0.9, 0.95),
+        });
+
+        currentPage.drawText(`Subtotal: RM ${subtotal.toFixed(2)}`, {
+          x: 430,
+          y: currentY,
+          size: 9,
+          font: helveticaBold,
+          color: rgb(1, 1, 1),
+        });
+
+        currentY -= 26;
+
+        // Table Column Headers
+        drawHeaders(currentPage, currentY);
+        currentY -= 20;
+
+        if (groupClaims.length === 0) {
+          currentPage.drawText('No claims recorded in this group.', {
+            x: 55,
+            y: currentY - 5,
+            size: 8.5,
+            font: helvetica,
+            color: rgb(0.5, 0.5, 0.5),
+          });
+          currentY -= 25;
+        } else {
+          for (let i = 0; i < groupClaims.length; i++) {
+            const claim = groupClaims[i];
+
+            const claimDateStr = new Date(claim.date).toLocaleDateString('en-MY', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+            });
+            const supplierLines = wrapText(claim.supplierName || '-', 110, 8, helvetica);
+            const refLines = wrapText(claim.referenceNumber || '-', 95, 8, helvetica);
+            const catLines = wrapText(`${claim.account.code} - ${claim.account.name}`, 120, 8, helvetica);
+            const amtStr = `RM ${claim.amount.toFixed(2)}`;
+
+            const row1LinesCount = Math.max(supplierLines.length, refLines.length, catLines.length, 1);
+            const row1Height = row1LinesCount * 11 + 4;
+
+            const descLines = wrapText(claim.itemDescription || '-', 445, 7.5, helvetica);
+            const row2Height = descLines.length * 9.5 + 4;
+
+            const itemBlockHeight = row1Height + row2Height + 4;
+
+            // Overflow check
+            if (currentY - itemBlockHeight < 65) {
+              currentPage = pdfDoc.addPage([595, 842]);
+              currentY = height - 60;
+              drawHeaders(currentPage, currentY);
+              currentY -= 20;
+            }
+
+            // Alternating shading
+            if (i % 2 === 1) {
+              currentPage.drawRectangle({
+                x: 40,
+                y: currentY - itemBlockHeight + 2,
+                width: 515,
+                height: itemBlockHeight - 2,
+                color: rgb(0.96, 0.97, 0.99),
+              });
+            }
+
+            // ROW 1
+            const row1TopY = currentY - 9;
+            currentPage.drawText(claimDateStr, {
+              x: 45,
+              y: row1TopY,
+              size: 8,
+              font: helvetica,
+              color: rgb(0.15, 0.15, 0.15),
+            });
+
+            supplierLines.forEach((line, idx) => {
+              currentPage.drawText(line, {
+                x: 110,
+                y: row1TopY - idx * 11,
+                size: 8,
+                font: helvetica,
+                color: rgb(0.15, 0.15, 0.15),
+              });
+            });
+
+            refLines.forEach((line, idx) => {
+              currentPage.drawText(line, {
+                x: 225,
+                y: row1TopY - idx * 11,
+                size: 8,
+                font: helvetica,
+                color: rgb(0.15, 0.15, 0.15),
+              });
+            });
+
+            catLines.forEach((line, idx) => {
+              currentPage.drawText(line, {
+                x: 325,
+                y: row1TopY - idx * 11,
+                size: 8,
+                font: helvetica,
+                color: rgb(0.15, 0.15, 0.15),
+              });
+            });
+
+            currentPage.drawText(amtStr, {
+              x: 450,
+              y: row1TopY,
+              size: 8.5,
+              font: helveticaBold,
+              color: rgb(0.12, 0.15, 0.27),
+            });
+
+            // ROW 2 (Description)
+            const row2TopY = currentY - row1Height - 3;
+            currentPage.drawText('Description:', {
+              x: 45,
+              y: row2TopY,
+              size: 7.5,
+              font: helveticaBold,
+              color: rgb(0.4, 0.45, 0.5),
+            });
+
+            descLines.forEach((line, idx) => {
+              currentPage.drawText(line, {
+                x: 100,
+                y: row2TopY - idx * 9.5,
+                size: 7.5,
+                font: helvetica,
+                color: rgb(0.25, 0.28, 0.32),
+              });
+            });
+
+            // Separator line
+            currentPage.drawLine({
+              start: { x: 40, y: currentY - itemBlockHeight },
+              end: { x: 555, y: currentY - itemBlockHeight },
+              thickness: 0.5,
+              color: rgb(0.85, 0.88, 0.9),
+            });
+
+            currentY -= itemBlockHeight + 2;
+          }
+
+          // Subtotal Row for this group
+          if (currentY - 24 < 65) {
+            currentPage = pdfDoc.addPage([595, 842]);
+            currentY = height - 60;
+          }
+
           currentPage.drawRectangle({
             x: 40,
-            y: currentY - itemBlockHeight + 2,
+            y: currentY - 6,
             width: 515,
-            height: itemBlockHeight - 2,
-            color: rgb(0.96, 0.97, 0.99),
+            height: 18,
+            color: rgb(0.93, 0.94, 0.97),
           });
+
+          currentPage.drawText(`Subtotal (${groupTitle}):`, {
+            x: 48,
+            y: currentY,
+            size: 8.5,
+            font: helveticaBold,
+            color: rgb(0.2, 0.25, 0.3),
+          });
+
+          currentPage.drawText(`RM ${subtotal.toFixed(2)}`, {
+            x: 450,
+            y: currentY,
+            size: 8.5,
+            font: helveticaBold,
+            color: rgb(0.2, 0.25, 0.3),
+          });
+
+          currentY -= 26;
         }
 
-        // --- ROW 1: Claim Metadata ---
-        const row1TopY = currentY - 9;
+        currentY -= 10;
+      };
 
-        // Date
-        currentPage.drawText(claimDateStr, {
-          x: 45,
-          y: row1TopY,
-          size: 8,
-          font: helvetica,
-          color: rgb(0.15, 0.15, 0.15),
-        });
+      // Render Group 1: EXPENSE CLAIMS
+      renderGroup(
+        '1. Expense Claims',
+        expenseClaims,
+        expenseSubtotal,
+        { r: 0.18, g: 0.24, b: 0.42 }
+      );
 
-        // Supplier (Multi-line)
-        supplierLines.forEach((line, idx) => {
-          currentPage.drawText(line, {
-            x: 110,
-            y: row1TopY - idx * 11,
-            size: 8,
-            font: helvetica,
-            color: rgb(0.15, 0.15, 0.15),
-          });
-        });
+      // Render Group 2: PAYROLL SITE ALLOWANCE CLAIMS
+      renderGroup(
+        '2. Payroll Allowance Claims (Site Allowance)',
+        payrollClaims,
+        payrollSubtotal,
+        { r: 0.24, g: 0.36, b: 0.32 }
+      );
 
-        // Ref Number (Multi-line)
-        refLines.forEach((line, idx) => {
-          currentPage.drawText(line, {
-            x: 225,
-            y: row1TopY - idx * 11,
-            size: 8,
-            font: helvetica,
-            color: rgb(0.15, 0.15, 0.15),
-          });
-        });
-
-        // Category (Multi-line)
-        catLines.forEach((line, idx) => {
-          currentPage.drawText(line, {
-            x: 325,
-            y: row1TopY - idx * 11,
-            size: 8,
-            font: helvetica,
-            color: rgb(0.15, 0.15, 0.15),
-          });
-        });
-
-        // Amount
-        currentPage.drawText(amtStr, {
-          x: 450,
-          y: row1TopY,
-          size: 8.5,
-          font: helveticaBold,
-          color: rgb(0.12, 0.15, 0.27),
-        });
-
-        // --- ROW 2: Item Description (Spanning width) ---
-        const row2TopY = currentY - row1Height - 3;
-        currentPage.drawText('Description:', {
-          x: 45,
-          y: row2TopY,
-          size: 7.5,
-          font: helveticaBold,
-          color: rgb(0.4, 0.45, 0.5),
-        });
-
-        descLines.forEach((line, idx) => {
-          currentPage.drawText(line, {
-            x: 100,
-            y: row2TopY - idx * 9.5,
-            size: 7.5,
-            font: helvetica,
-            color: rgb(0.25, 0.28, 0.32),
-          });
-        });
-
-        // Item bottom separator line
-        currentPage.drawLine({
-          start: { x: 40, y: currentY - itemBlockHeight },
-          end: { x: 555, y: currentY - itemBlockHeight },
-          thickness: 0.5,
-          color: rgb(0.85, 0.88, 0.9),
-        });
-
-        currentY -= itemBlockHeight + 2;
-      }
-
-      // Draw Total block
-      if (currentY < 90) {
+      // ─── GRAND TOTAL BAR ──────────────────────────────────────────────────
+      if (currentY - 28 < 75) {
         currentPage = pdfDoc.addPage([595, 842]);
         currentY = height - 60;
       }
 
-      currentY -= 10;
       currentPage.drawRectangle({
         x: 40,
         y: currentY - 8,
         width: 515,
-        height: 22,
-        color: rgb(0.92, 0.93, 0.97),
+        height: 24,
+        color: rgb(0.9, 0.91, 0.98),
+        borderColor: rgb(0.7, 0.65, 0.9),
+        borderWidth: 1,
       });
 
-      currentPage.drawText('TOTAL CLAIMS APPROVED:', {
+      currentPage.drawText('GRAND TOTAL CLAIM AMOUNT:', {
         x: 48,
         y: currentY,
-        size: 9,
+        size: 9.5,
         font: helveticaBold,
         color: rgb(0.12, 0.15, 0.27),
       });
 
-      const totalAmtText = `RM ${totalAmountSum.toFixed(2)}`;
-      currentPage.drawText(totalAmtText, {
-        x: 450,
+      currentPage.drawText(`RM ${grandTotal.toFixed(2)}`, {
+        x: 440,
         y: currentY,
-        size: 9.5,
+        size: 10.5,
         font: helveticaBold,
         color: rgb(0.44, 0.35, 0.95),
       });
 
-      // Signature approval section
-      currentY -= 65;
-      if (currentY < 100) {
+      // ─── SIGNATURE BLOCK ─────────────────────────────────────────────────
+      currentY -= 55;
+      if (currentY < 90) {
         currentPage = pdfDoc.addPage([595, 842]);
-        currentY = height - 100;
+        currentY = height - 90;
       }
 
       currentPage.drawLine({
@@ -440,7 +614,7 @@ export async function GET(
       });
     }
 
-    // Append individual receipt attachments with custom Separator pages
+    // ─── REQUIREMENT 4: COMBINE RECEIPT DETAILS + IMAGE INTO SINGLE PAGE ─────
     for (const claim of claims) {
       if (claim.receiptUrl) {
         const receiptPath = join(process.cwd(), 'public', claim.receiptUrl);
@@ -450,80 +624,121 @@ export async function GET(
             const receiptBuffer = await readFile(receiptPath);
             const urlLower = claim.receiptUrl.toLowerCase();
 
-            // 1. Create formatted separator page for this specific receipt
-            const sepPage = pdfDoc.addPage([595, 842]);
+            // SINGLE PAGE for both receipt details AND receipt image
+            const attachPage = pdfDoc.addPage([595, 842]);
+            const { width: pW, height: pH } = attachPage.getSize();
 
-            sepPage.drawRectangle({
+            // 1. Compact Header Banner
+            attachPage.drawRectangle({
               x: 40,
-              y: height - 120,
-              width: width - 80,
-              height: 60,
+              y: pH - 65,
+              width: pW - 80,
+              height: 38,
               color: rgb(0.12, 0.15, 0.27),
             });
 
-            sepPage.drawText('RECEIPT ATTACHMENT DETAILS', {
-              x: 55,
-              y: height - 92,
-              size: 14,
+            attachPage.drawText('RECEIPT ATTACHMENT & CLAIM DETAILS', {
+              x: 52,
+              y: pH - 46,
+              size: 11,
               font: helveticaBold,
               color: rgb(1, 1, 1),
             });
 
-            sepPage.drawText(`Claim Transaction ID: ${claim.id}`, {
-              x: 55,
-              y: height - 110,
-              size: 8.5,
+            const typeLabel =
+              claim.claimType === 'PAYROLL'
+                ? 'SITE ALLOWANCE (PAYROLL)'
+                : 'EXPENSE CLAIM';
+
+            attachPage.drawText(`ID: ${claim.id}  •  Type: ${typeLabel}`, {
+              x: 52,
+              y: pH - 58,
+              size: 7.5,
               font: helvetica,
-              color: rgb(0.8, 0.8, 0.8),
+              color: rgb(0.8, 0.85, 0.9),
             });
 
-            let sepY = height - 175;
+            // 2. Compact Details Card
+            const cardTopY = pH - 72;
+            const cardHeight = 88;
+            attachPage.drawRectangle({
+              x: 40,
+              y: cardTopY - cardHeight,
+              width: pW - 80,
+              height: cardHeight,
+              color: rgb(0.97, 0.98, 0.99),
+              borderColor: rgb(0.85, 0.88, 0.9),
+              borderWidth: 1,
+            });
 
-            const drawSepRow = (label: string, val: string, isBig = false) => {
-              sepPage.drawText(label, { x: 50, y: sepY, size: 9.5, font: helveticaBold, color: rgb(0.4, 0.45, 0.5) });
-              sepPage.drawText(val, {
-                x: 180,
-                y: sepY,
-                size: isBig ? 12 : 9.5,
-                font: helveticaBold,
-                color: isBig ? rgb(0.44, 0.35, 0.95) : rgb(0.1, 0.1, 0.15),
-              });
-              sepPage.drawLine({ start: { x: 40, y: sepY - 8 }, end: { x: width - 40, y: sepY - 8 }, thickness: 0.5, color: rgb(0.85, 0.88, 0.9) });
-              sepY -= 28;
-            };
+            const claimDateStr = new Date(claim.date).toLocaleDateString('en-MY', {
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric',
+            });
 
-            drawSepRow('Supplier / Vendor:', claim.supplierName);
-            drawSepRow('Reference / Invoice No.:', claim.referenceNumber);
-            drawSepRow('Date of Expense:', new Date(claim.date).toLocaleDateString('en-MY', { year: 'numeric', month: 'long', day: 'numeric' }));
-            drawSepRow('Account Code Category:', `${claim.account.code} - ${claim.account.name}`);
-            drawSepRow('Amount Claimed:', `RM ${claim.amount.toFixed(2)}`, true);
+            // Row 1
+            attachPage.drawText('Supplier / Vendor:', { x: 50, y: cardTopY - 16, size: 7.5, font: helveticaBold, color: rgb(0.4, 0.45, 0.5) });
+            attachPage.drawText(claim.supplierName || '-', { x: 135, y: cardTopY - 16, size: 8, font: helveticaBold, color: rgb(0.1, 0.1, 0.15) });
 
-            sepY -= 15;
-            sepPage.drawText('Business Justification & Description:', { x: 50, y: sepY, size: 9.5, font: helveticaBold, color: rgb(0.12, 0.15, 0.27) });
-            sepY -= 15;
+            attachPage.drawText('Account Category:', { x: 290, y: cardTopY - 16, size: 7.5, font: helveticaBold, color: rgb(0.4, 0.45, 0.5) });
+            attachPage.drawText(`${claim.account.code} - ${claim.account.name}`, { x: 375, y: cardTopY - 16, size: 8, font: helvetica, color: rgb(0.1, 0.1, 0.15) });
 
-            const sepDescLines = wrapText(claim.itemDescription, width - 100, 9.5, helvetica);
-            for (const line of sepDescLines) {
-              if (sepY < 100) {
-                sepPage.drawText('... [description truncated]', { x: 50, y: sepY, size: 9, font: helvetica, color: rgb(0.5, 0.5, 0.5) });
-                break;
-              }
-              sepPage.drawText(line, { x: 50, y: sepY, size: 9.5, font: helvetica, color: rgb(0.15, 0.15, 0.15) });
-              sepY -= 14;
-            }
+            // Row 2
+            attachPage.drawText('Ref / Invoice No.:', { x: 50, y: cardTopY - 32, size: 7.5, font: helveticaBold, color: rgb(0.4, 0.45, 0.5) });
+            attachPage.drawText(claim.referenceNumber || '-', { x: 135, y: cardTopY - 32, size: 8, font: helvetica, color: rgb(0.1, 0.1, 0.15) });
 
-            // 2. Append the actual receipt file (PDF or Image)
+            attachPage.drawText('Expense Date:', { x: 290, y: cardTopY - 32, size: 7.5, font: helveticaBold, color: rgb(0.4, 0.45, 0.5) });
+            attachPage.drawText(claimDateStr, { x: 375, y: cardTopY - 32, size: 8, font: helvetica, color: rgb(0.1, 0.1, 0.15) });
+
+            // Row 3
+            attachPage.drawText('Claim Category:', { x: 50, y: cardTopY - 48, size: 7.5, font: helveticaBold, color: rgb(0.4, 0.45, 0.5) });
+            attachPage.drawText(typeLabel, { x: 135, y: cardTopY - 48, size: 8, font: helveticaBold, color: claim.claimType === 'PAYROLL' ? rgb(0.2, 0.55, 0.35) : rgb(0.12, 0.15, 0.27) });
+
+            attachPage.drawText('Amount Claimed:', { x: 290, y: cardTopY - 48, size: 7.5, font: helveticaBold, color: rgb(0.4, 0.45, 0.5) });
+            attachPage.drawText(`RM ${claim.amount.toFixed(2)}`, { x: 375, y: cardTopY - 48, size: 10, font: helveticaBold, color: rgb(0.44, 0.35, 0.95) });
+
+            // Row 4: Description
+            attachPage.drawText('Description:', { x: 50, y: cardTopY - 66, size: 7.5, font: helveticaBold, color: rgb(0.4, 0.45, 0.5) });
+            const descLines = wrapText(claim.itemDescription || '-', pW - 195, 7.5, helvetica);
+            const firstTwoDesc = descLines.slice(0, 2);
+            firstTwoDesc.forEach((dl, dIdx) => {
+              attachPage.drawText(dl, { x: 135, y: cardTopY - 66 - dIdx * 9.5, size: 7.5, font: helvetica, color: rgb(0.2, 0.2, 0.2) });
+            });
+
+            // 3. Receipt Area (from cardBottom down to footer)
+            const availableTopY = cardTopY - cardHeight - 10;
+            const availableBottomY = 32;
+            const maxW = pW - 80;
+            const maxH = availableTopY - availableBottomY;
+
             if (urlLower.endsWith('.pdf')) {
+              // PDF receipt: embed first page into the single page
               const srcPdf = await PDFDocument.load(receiptBuffer);
-              const copiedPages = await pdfDoc.copyPages(srcPdf, srcPdf.getPageIndices());
-              copiedPages.forEach((p) => {
-                pdfDoc.addPage(p);
+              const [embeddedPage] = await pdfDoc.embedPdf(srcPdf, [0]);
+              const scale = Math.min(maxW / embeddedPage.width, maxH / embeddedPage.height);
+              const finalW = embeddedPage.width * scale;
+              const finalH = embeddedPage.height * scale;
+
+              attachPage.drawPage(embeddedPage, {
+                x: (pW - finalW) / 2,
+                y: availableBottomY + (maxH - finalH) / 2,
+                width: finalW,
+                height: finalH,
               });
+
+              // If the uploaded PDF had more than 1 page, append subsequent pages
+              if (srcPdf.getPageCount() > 1) {
+                const extraIndices = srcPdf.getPageIndices().slice(1);
+                const extraPages = await pdfDoc.copyPages(srcPdf, extraIndices);
+                extraPages.forEach((p) => pdfDoc.addPage(p));
+              }
             } else if (
               urlLower.endsWith('.png') ||
               urlLower.endsWith('.jpg') ||
               urlLower.endsWith('.jpeg')
             ) {
+              // Image receipt
               let img;
               if (urlLower.endsWith('.png')) {
                 img = await pdfDoc.embedPng(receiptBuffer);
@@ -532,20 +747,13 @@ export async function GET(
               }
 
               const imgDims = img.scale(1);
-              const imagePage = pdfDoc.addPage([595, 842]);
-              const { width: pW, height: pH } = imagePage.getSize();
-
-              const margin = 40;
-              const maxW = pW - margin * 2;
-              const maxH = pH - margin * 2 - 30;
-
               const scale = Math.min(maxW / imgDims.width, maxH / imgDims.height);
               const finalW = imgDims.width * scale;
               const finalH = imgDims.height * scale;
 
-              imagePage.drawImage(img, {
+              attachPage.drawImage(img, {
                 x: (pW - finalW) / 2,
-                y: (pH - finalH) / 2 + 15,
+                y: availableBottomY + (maxH - finalH) / 2,
                 width: finalW,
                 height: finalH,
               });
@@ -572,15 +780,19 @@ export async function GET(
       }
     }
 
-    // Dynamic numbering and footer across all pages
+    // ─── DYNAMIC FOOTER ACROSS ALL PAGES ─────────────────────────────────────
     const pages = pdfDoc.getPages();
     for (let i = 0; i < pages.length; i++) {
       const p = pages[i];
       const { width: pW } = p.getSize();
 
-      p.drawText(`Employee claims report summary: ${employee.name || employee.username}`, {
+      const footerLabel = isArchived
+        ? `Employee claims report summary (ARCHIVED): ${employee.name || employee.username}`
+        : `Employee claims report summary: ${employee.name || employee.username}`;
+
+      p.drawText(footerLabel, {
         x: 40,
-        y: 20,
+        y: 18,
         size: 7.5,
         font: helvetica,
         color: rgb(0.5, 0.55, 0.6),
@@ -588,7 +800,7 @@ export async function GET(
 
       p.drawText(`Page ${i + 1} of ${pages.length}`, {
         x: pW - 95,
-        y: 20,
+        y: 18,
         size: 7.5,
         font: helvetica,
         color: rgb(0.5, 0.55, 0.6),
@@ -597,10 +809,14 @@ export async function GET(
 
     const pdfBytes = await pdfDoc.save();
 
+    const filename = isArchived
+      ? `employee_summary_report_${employee.username}_archived.pdf`
+      : `employee_summary_report_${employee.username}.pdf`;
+
     return new NextResponse(Buffer.from(pdfBytes) as any, {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `inline; filename="employee_summary_report_${employee.username}.pdf"`,
+        'Content-Disposition': `inline; filename="${filename}"`,
         'Cache-Control': 'no-store, max-age=0',
       },
     });

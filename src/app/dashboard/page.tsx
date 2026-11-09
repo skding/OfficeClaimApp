@@ -24,6 +24,7 @@ interface Claim {
   itemDescription: string;
   receiptUrl: string | null;
   status: string;
+  claimType?: string;
   accountId: string;
   account: Account;
   isArchived?: boolean;
@@ -41,6 +42,7 @@ export default function StaffDashboard() {
   const [userProfile, setUserProfile] = useState<{ name: string; username: string } | null>(null);
   
   // Form States
+  const [claimType, setClaimType] = useState<'EXPENSE' | 'PAYROLL'>('EXPENSE');
   const [supplierName, setSupplierName] = useState('');
   const [referenceNumber, setReferenceNumber] = useState('');
   const [date, setDate] = useState('');
@@ -145,6 +147,7 @@ export default function StaffDashboard() {
   };
 
   const clearForm = () => {
+    setClaimType('EXPENSE');
     setSupplierName('');
     setReferenceNumber('');
     setDate('');
@@ -291,6 +294,7 @@ export default function StaffDashboard() {
 
     try {
       const formData = new FormData();
+      formData.append('claimType', claimType);
       formData.append('supplierName', supplierName);
       formData.append('referenceNumber', referenceNumber);
       formData.append('date', date);
@@ -390,6 +394,7 @@ export default function StaffDashboard() {
   // Click on a claim to view/edit
   const handleSelectClaimForEdit = (claim: Claim) => {
     setSelectedClaim(claim);
+    setClaimType(claim.claimType === 'PAYROLL' ? 'PAYROLL' : 'EXPENSE');
     setSupplierName(claim.supplierName);
     setReferenceNumber(claim.referenceNumber);
     setDate(claim.date.split('T')[0]);
@@ -452,7 +457,10 @@ export default function StaffDashboard() {
             </div>
             <div>
               <h2 style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>Office Claim</h2>
-              <span style={{ fontSize: '0.75rem', color: 'hsl(var(--accent))', fontWeight: 600 }}>STAFF PORTAL</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <span style={{ fontSize: '0.75rem', color: 'hsl(var(--accent))', fontWeight: 600 }}>STAFF PORTAL</span>
+                <span style={{ fontSize: '0.65rem', background: 'hsl(var(--bg-card))', border: '1px solid hsl(var(--border-color))', borderRadius: '4px', padding: '1px 5px', color: 'hsl(var(--text-muted))' }}>v1.0.0</span>
+              </div>
             </div>
           </div>
 
@@ -630,6 +638,7 @@ export default function StaffDashboard() {
                     <thead>
                       <tr>
                         <th>Date</th>
+                        <th>Type</th>
                         <th>Supplier</th>
                         <th>Ref / Invoice</th>
                         <th>Account Category</th>
@@ -645,6 +654,20 @@ export default function StaffDashboard() {
                         return (
                           <tr key={claim.id}>
                             <td>{new Date(claim.date).toLocaleDateString('en-MY', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
+                            <td>
+                              <span style={{
+                                fontSize: '0.72rem',
+                                fontWeight: 600,
+                                padding: '2px 8px',
+                                borderRadius: '6px',
+                                background: claim.claimType === 'PAYROLL' ? 'hsl(150, 45%, 18%)' : 'hsl(var(--bg-card))',
+                                color: claim.claimType === 'PAYROLL' ? '#86efac' : 'hsl(var(--text-secondary))',
+                                border: '1px solid hsl(var(--border-color))',
+                                whiteSpace: 'nowrap'
+                              }}>
+                                {claim.claimType === 'PAYROLL' ? 'Site Allowance' : 'Expense'}
+                              </span>
+                            </td>
                             <td style={{ fontWeight: 600 }}>{claim.supplierName}</td>
                             <td><code>{claim.referenceNumber}</code></td>
                             <td>
@@ -713,6 +736,59 @@ export default function StaffDashboard() {
               </div>
 
               <form onSubmit={handleSubmitClaim}>
+                <div className="form-group">
+                  <label className="form-label">
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <Tag size={14} /> Claim Category / Type
+                    </span>
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                    <button
+                      type="button"
+                      className={`btn ${claimType === 'EXPENSE' ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{
+                        padding: '0.55rem 0.75rem',
+                        fontSize: '0.82rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.4rem',
+                        borderRadius: '8px',
+                        border: claimType === 'EXPENSE' ? 'none' : '1px solid hsl(var(--border-color))',
+                      }}
+                      onClick={() => setClaimType('EXPENSE')}
+                      disabled={(selectedClaim && selectedClaim.status !== 'PENDING') || loadingSubmit}
+                    >
+                      <Tag size={14} />
+                      <span>Expense Claim</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn ${claimType === 'PAYROLL' ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{
+                        padding: '0.55rem 0.75rem',
+                        fontSize: '0.82rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.4rem',
+                        borderRadius: '8px',
+                        border: claimType === 'PAYROLL' ? 'none' : '1px solid hsl(var(--border-color))',
+                      }}
+                      onClick={() => setClaimType('PAYROLL')}
+                      disabled={(selectedClaim && selectedClaim.status !== 'PENDING') || loadingSubmit}
+                    >
+                      <DollarSign size={14} />
+                      <span>Site Allowance (Payroll)</span>
+                    </button>
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: 'hsl(var(--text-muted))', marginTop: '0.35rem' }}>
+                    {claimType === 'PAYROLL'
+                      ? 'Note: Site Allowance is part of payroll and will be grouped separately in summaries and excluded from Bukku export.'
+                      : 'Standard expense claim to be processed and exported to Bukku.'}
+                  </div>
+                </div>
+
                 <div className="form-group">
                   <label className="form-label">
                     <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
